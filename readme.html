@@ -1,0 +1,146 @@
+<html>
+<head>
+<title>Mallet-compatible Spectral LDA</title>
+<style>
+body { font-family: Calibri, Verdana, Helvetica; }
+tt { background-color: #ddd; }
+pre { background-color: #ddd; margin: 20px; padding: 20px; }
+</style>
+</head>
+<body>
+
+<h2>An anchor-based algorithm for latent Dirichlet allocation.</h2>
+
+<p>This package implements an algorithm described by <a href="http://www.cs.princeton.edu/~mimno/papers/arora13.pdf">this paper</a>.
+The input format is the same as for the Mallet <a href="http://mallet.cs.umass.edu">topic modeling toolkit</a>.
+</p>
+
+<p>This is not the code that was used for experiments in that paper.
+The Python implementation we used can be found at <a href="http://www.cs.nyu.edu/~halpern">Yoni Halpern's</a> site.</p>
+
+<p>
+The spectral algorithm operates in several phases:
+</p>
+
+<ol>
+<li>
+<b>Find word co-occurrences.</b>
+In this step we calculate the probability that each word will occur in the same document as each other word. The output is a matrix with dimension V x V, where V is the number of distinct word types. As this matrix may be very large, we may use a random projection to replace this matrix with a narrower matrix.
+Once this step is complete, we no longer need the original documents.
+</li>
+<li>
+<b>Find "anchor words".</b>
+In this step we select K words, one per topic, that will be "anchors". An anchor is a word that occurs with non-negligible probability in only one topic. Not every document that is about a topic will contain that topic's anchor word, but every document that contains an anchor word will be (at least somewhat) about that anchor word's topic.
+</li>
+<li>
+<b>Recover topic-word distributions.</b>
+For each word that we did not select as an anchor, we calculate the probability of topics given that word. Once we have this distribution for every word, we can calculate the probability of words given topics.
+</li>
+<li>
+<b>Calculate document-topic distributions (optional).</b>
+The previous two steps did not depend on the original documents (just the word-word probabilities), but we are often interested in the concentration of topics in documents.
+In this step we use Gibbs sampling to estimate the distribution of topics in documents.
+This sampling step differs from standard Gibbs sampling because we do not change the distribution over words for topics as we sample.
+As a result, inference for each document is independent.
+</li>
+</ol>
+
+<h3>Training models</h3>
+
+<p>
+To begin you must import documents to Mallet feature-sequence format. See the <a href="http://mallet.cs.umass.edu">Mallet documentation</a> for details. Note that this package includes a full Mallet distribution. You can use the command <tt>bin/anchor import-file ...</tt> to import documents as you normally would. Here we use a version of the CMU 2008 political blog corpus.
+</p>
+
+<p>
+The following command line will train a model. Sections below will explain the options.
+</p>
+
+<pre>
+bin/anchor train-anchor --input blogs.sequences --num-topics 50 --num-random-projections 1000 --projection-density 0.01 --min-docs 100 --topics-file blogs.t50.topics
+</pre>
+
+<p>
+The output tracks the first three steps outlined above. We first have to calculate the matrix of word-word co-occurrences. We then select 50 anchor words, which are printed in order. Because this step modifies the word-word co-occurrences in place, we generate the original matrix again. Finally, we look at each word (including the anchor words) in turn, and calcuate the probability of topics given that word.
+</p>
+
+<p>
+Every 100 words, we display some information about the current word. The first column is the word ID in the vocabulary. The second column is the number of exponentiated gradient iterations we used. The third column is the log of the squared loss objective. We want this loss to be close to zero, so its log should be large and negative, around -8 or lower. The fourth column is the Shannon entropy of the topic distribution we found for that word. Lower numbers indicate a more concentrated distribution, where the word has high probability in only a few topics. A higher number indicates that the word has more uniform probability, not preferring any one topic. The theoretical maximum entropy is the log of the number of topics. The last column is the entropy of the distribution we found divided by this maximum entropy. Values close to 1.0 indicate that we found a mostly uniform distribution.
+</p>
+
+<p>
+This closeness-to-uniform metric can be used to diagnose model fit. If many words, especially words with low word IDs close to the beginning of the vocabulary (which tend to be high frequency), are close to uniform, the topics will all look like a list of the high frequency words. In this case, increasing the number of topics is a good idea.
+</p>
+
+<p>
+This next command will write a file containing document-topic proportions to a tab-delimited file. Values for all topics are included, unlike the standard (sparse) Mallet output. You can also write a Mallet Gibbs state file that can be used to initialize a sampler, see <tt>bin/anchor doc-topics --help</tt> for details.
+</p>
+
+<pre>
+bin/anchor doc-topics --input blogs.sequences --num-topics 50 --topics-file blogs.t50.topics --doc-topics blogs.t50.doc-topics
+</pre>
+
+
+<h3>Efficiency.</h3>
+
+<p>
+When we train by Gibbs sampling, the size of the corpus is the most significant factor in performance. If we double the number of tokens in the documents, we double our running time. When we train with spectral inference, the size of the vocabulary (the number of distinct word types) is the most significant factor. The size of the corpus matters, but it only affects the initial co-occurrence-finding step and the doc-topic step, if used.
+As a result, we can use the spectral algorithm on very large corpora.
+</p>
+
+<h3>Random projections for large vocabularies.</h3>
+
+<p>
+We use random projections to allow for large vocabularies without running out of memory.
+The word co-occurrence matrix that we calculate from the documents requires memory proportional to the square of the number of distinct words.
+If we want to use vocabularies larger than about 4000 words, we need to find a way to compress this matrix.
+</p>
+
+<p>
+A random projection is a way of representing high dimensional points in a lower dimensional space, such that distances are preserved.
+Instead of a square matrix, we create a tall skinny matrix.
+The command line parameter <tt>--num-random-projections</tt> determines the number of columns in the resulting matrix. 
+Based on some initial experiments, around 1000 random projections seems to be a good number, but this should be used only as a rough estimate.
+</p>
+
+<p>
+A second parameter of the random projections is the density of the random projection. Using sparser projections may improve memory use and speed with which we process documents.
+Use the <tt>--projection-density</tt> parameter to set the density of projections.
+If this parameter is set to the special value 1.0 (ie every cell is non-zero) we use a dense Gaussian random matrix.
+Otherwise, we use a sparse, discrete random matrix.
+For a value of 0.01 with 1000 random projections, then exactly 10 entries in each row will be non-zero (this is a reasonable value, with the same caveats as above).
+</p>
+
+<p>
+Note that unlike other algorithms, the spectral algorithm is deterministic. Running the algorithm multiple times should give you the same topics. 
+The random projection step means that the algorithm is not strictly deterministic, but if you use enough random projections, the resulting model should not change significantly from run to run.
+</p>
+
+<h3>The vocabulary and the anchor words.</h3>
+
+<p>
+In most cases we want to consider a subset of the vocabulary as possible anchor words.
+The algorithm looks for words that occur only in the context of a single topic. We can trivially satisfy this criterion by selecting an extremely rare word that only occurs in a single document. But this word will produce an extremely noisy topic, because we have only one document from which to estimate the distribution of words that occur with that anchor.
+</p>
+
+<p>
+A simple way to pick more useful anchor words is to restrict attention to words that occur in many documents.
+Note that this restriction does not affect the overall vocabulary -- we can still include rare words in the topics, we just don't consider them as anchors.
+We use the <tt>--min-docs</tt> argument to define a document frequency cutoff.
+If a word does not occur at least once in this number of documents, we do not consider it as a possible anchor word.
+</p>
+
+<h3>Order matters!</h3>
+
+<p>
+Unlike standard methods for topic model training, the order of topics is not random.
+The anchor finding process begins by selecting the word whose distribution over co-occurring words is most concentrated (see the paper for a more technical description).
+For each subsequent word the algorithm chooses the word that is most distinct <i>and different from the previously selected words</i>.
+As a result, the first topics may be more narrowly focused than topics later in the list of topics.
+</p>
+
+<p>
+If we ask for 10 topics, and then run the program again asking for 20 topics, the first 10 topics of the 20-topic model will have the same anchor words as the topics in the 10-topic model. The <i>topic distributions</i> associated with those anchors may be different, but the anchors will be the same.
+</p>
+
+</body>
+</html>

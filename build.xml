@@ -1,0 +1,73 @@
+<project name="anchor" default="compile" basedir=".">
+  <description></description>
+  <!-- 
+    Properties
+    -->
+  <property name="src" location="src"/>
+  <property name="class" location="class"/>
+  <property name="lib" location="lib"/>
+  <property name="dist" location="dist"/>
+  <property name="doc" location="doc/api"/>
+
+  <path id="project.classpath">
+    <pathelement path="${class}"/>
+    <fileset dir="lib" includes="*.jar"/>
+  </path>
+
+  <!--
+    Initialization 
+    -->
+  <target name="init">
+    <!-- Create a time stamp -->
+    <tstamp/>
+    <!-- Create an output directory for class files -->
+    <mkdir dir="${class}"/>
+    <!-- Create an output directory for the final jar -->
+    <mkdir dir="${dist}"/>
+  </target>
+  
+  <!--
+    Target: compile
+    -->
+  <target
+    name="compile"
+    depends="init"
+    description="Compile all the source files">
+    <javac
+      destdir="${class}"
+      classpathref="project.classpath"
+      debug="true"
+      deprecation="on"
+      listfiles="no"
+      >
+      <src path="${src}"/>
+      <include name="cc/**/*.java"/> 
+     </javac>
+
+  </target>
+ 
+  <!--
+    Target: doc   {build javadoc API documentation}
+    -->
+  <target
+    name="doc"
+    depends="init"
+    description="Build Javadoc API webpages for all the source files">
+    <javadoc
+      destdir="${doc}"
+      classpathref="project.classpath"
+      author="true" version="true" use="true"
+      windowtitle=""
+      >
+      <packageset dir="${src}" defaultexcludes="yes">
+        <include name="cc/**/*.java"/>
+      </packageset>
+    </javadoc>
+  </target>
+ 
+  <!-- Create a jar file -->
+  <target name="jar" depends="compile">
+      <jar destfile="${dist}/anchor.jar" basedir="${class}"/>
+  </target>
+
+</project>
