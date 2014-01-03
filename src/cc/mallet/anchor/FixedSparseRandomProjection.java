@@ -30,7 +30,8 @@ public class FixedSparseRandomProjection extends BigramProbabilityMatrix {
 
 		projectionMatrix = new int[numWords][nonZeros];
 
-		squareRootSparsity = Math.sqrt((double) nonZeros / randomProjections);
+		//squareRootSparsity = Math.sqrt((double) nonZeros / randomProjections);
+		squareRootSparsity = Math.sqrt((double) randomProjections / nonZeros);
 
 		// Make an array with the numbers 0 .. (dictionary size - 1)
 		int[] allProjectionIndices = new int[randomProjections];
@@ -79,6 +80,7 @@ public class FixedSparseRandomProjection extends BigramProbabilityMatrix {
 				typeCounts.adjustOrPutValue(type, 1, 1);
 			}
 
+			double inverseNumPairs = 2.0 / (length * (length - 1));
 			double coefficient = squareRootSparsity * 2.0 / (length * (length - 1));
 
 			int[] types = typeCounts.keys();
@@ -100,7 +102,7 @@ public class FixedSparseRandomProjection extends BigramProbabilityMatrix {
 						projectedSignature[projectionIndex] += counts[i];
 					}
 				}
-				rowSums[type] += coefficient * counts[i] * (length - counts[i]);
+				rowSums[type] += inverseNumPairs * counts[i] * (length - counts[i]);
 			}
 			
 			// Rescale for the sparse random projection and the length of the document
@@ -139,7 +141,7 @@ public class FixedSparseRandomProjection extends BigramProbabilityMatrix {
         magnitude of the projected row */
 	public void rowNormalize() {
 		for (int row = 0; row < numWords; row++) {
-			double normalizer = 1.0 / rowSums[row];
+			double normalizer = 1.0 / (rowSums[row] * Math.sqrt(numColumns));
 			for (int col = 0; col < numColumns; col++) {
                 weights[row][col] *= normalizer;
             }

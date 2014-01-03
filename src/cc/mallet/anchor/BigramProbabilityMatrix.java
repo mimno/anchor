@@ -131,6 +131,15 @@ public class BigramProbabilityMatrix {
 		}
 	}
 
+	public double euclideanDistance(int firstRow, int secondRow) {
+		double sum = 0.0;
+		for (int col = 0; col < numColumns; col++) {
+			double diff = weights[firstRow][col] - weights[secondRow][col];
+			sum += diff * diff;
+		}
+		return Math.sqrt(sum);
+	}
+
 	public String topWordsFor(int row, int n) {
 		Formatter formatter = new Formatter();
 

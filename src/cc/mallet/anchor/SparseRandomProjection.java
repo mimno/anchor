@@ -6,12 +6,16 @@ import gnu.trove.map.hash.*;
 import java.util.*;
 import java.io.*;
 
-public class GaussianRandomProjection extends BigramProbabilityMatrix {
+public class SparseRandomProjection extends BigramProbabilityMatrix {
 
-	double[][] projectionMatrix;
+	byte[][] projectionMatrix;
+	double squareRootSparsity;
+	
 	double[] rowSums;
 	
-	public GaussianRandomProjection (Alphabet a, int randomProjections, Randoms random) {
+	public SparseRandomProjection (Alphabet a, int randomProjections, int sparsity, Randoms random) {
+		System.err.println("starting a sparse RP");
+
 		vocabulary = a;
 		numWords = vocabulary.size();
 		numColumns = randomProjections;
@@ -21,11 +25,27 @@ public class GaussianRandomProjection extends BigramProbabilityMatrix {
 		documentFrequencies = new int[numWords];
 		rowSums = new double[numWords];
 
-		projectionMatrix = new double[numWords][randomProjections];
+		projectionMatrix = new byte[numWords][randomProjections];
+
+		squareRootSparsity = Math.sqrt(sparsity);
+
+		// We sample random values for each cell. With probability 1/2s we sample a 1...
+		double positiveCutoff = 0.5 / sparsity;
+
+		// ... with probability 1/2s we sample a -1 ...
+		double negativeCutoff = 1.0 - positiveCutoff;
+
+		// ... and in the middle we leave a zero.
 
 		for (int word = 0; word < numWords; word++) {
 			for (int col = 0; col < randomProjections; col++) {
-				projectionMatrix[word][col] = random.nextGaussian();
+				double sample = random.nextUniform();
+				if (sample < positiveCutoff) {
+					projectionMatrix[word][col] = 1;
+				}
+				else if (sample > negativeCutoff) {
+					projectionMatrix[word][col] = -1;
+				}
 			}
 		}
 	}
@@ -52,7 +72,8 @@ public class GaussianRandomProjection extends BigramProbabilityMatrix {
 				typeCounts.adjustOrPutValue(type, 1, 1);
 			}
 
-			double coefficient = 2.0 / (length * (length - 1));
+			double inverseNumPairs = 2.0 / (length * (length - 1));
+			double coefficient = squareRootSparsity * 2.0 / (length * (length - 1));
 
 			int[] types = typeCounts.keys();
 			int[] counts = typeCounts.values(); 
@@ -65,7 +86,7 @@ public class GaussianRandomProjection extends BigramProbabilityMatrix {
 				for (int j = 0; j < numColumns; j++) {
 					projectedSignature[j] += counts[i] * projectionMatrix[type][j];
 				}
-				rowSums[type] += coefficient * counts[i] * (length - counts[i]);
+				rowSums[type] += inverseNumPairs * counts[i] * (length - counts[i]);
 			}
 			
 			// Rescale for the sparse random projection and the length of the document
@@ -99,8 +120,8 @@ public class GaussianRandomProjection extends BigramProbabilityMatrix {
 		return ((double) wordCounts[type]) / totalTokens;
 	}
 
-	/** We need to keep track of what the magnitude of the original row was, not the 
-		magnitude of the projected row */
+    /** We need to keep track of what the magnitude of the original row was, not the
+        magnitude of the projected row */
 	public void rowNormalize() {
 		for (int row = 0; row < numWords; row++) {
 			double normalizer = 1.0 / (rowSums[row] * Math.sqrt(numColumns));
@@ -127,7 +148,7 @@ public class GaussianRandomProjection extends BigramProbabilityMatrix {
 		//Alphabet vocabulary = AlphabetFactory.loadFromFile(new File(args[0]));
 		InstanceList instances = InstanceList.load(new File(args[0]));
 
-		GaussianRandomProjection matrix = new GaussianRandomProjection(instances.getDataAlphabet(), 1000, new Randoms());
+		SparseRandomProjection matrix = new SparseRandomProjection(instances.getDataAlphabet(), 1000, 10, new Randoms());
 
 		matrix.load(instances);
 
